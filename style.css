@@ -169,6 +169,11 @@ h2 { font-size: 1.15rem; font-weight: 800; margin: 2.25rem 0 1rem; display: flex
 .dropzone:hover, .dropzone.over { background: rgba(56, 189, 248, 0.08); border-color: var(--primary); }
 .dropzone .big { font-size: 2.4rem; }
 .dropzone h3 { margin: 0.5rem 0 0.3rem; font-weight: 800; }
+.unlock-card { border-color: rgba(56, 189, 248, 0.35); }
+.unlock-card h3 { font-weight: 800; margin-bottom: 0.3rem; }
+.check-row { display: flex; align-items: center; gap: 0.45rem; margin-top: 0.8rem; color: var(--muted); font-size: 0.85rem; cursor: pointer; }
+.check-row input { width: 16px; height: 16px; accent-color: var(--primary); }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 0.85em; background: rgba(255, 255, 255, 0.06); padding: 0.05rem 0.35rem; border-radius: 4px; }
 .progress-bar { height: 8px; background: rgba(255, 255, 255, 0.06); border-radius: 4px; overflow: hidden; margin-top: 1rem; }
 .progress-bar > div { height: 100%; background: linear-gradient(90deg, var(--primary-strong), var(--primary)); transition: width 0.15s; }
 

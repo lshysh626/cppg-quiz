@@ -168,7 +168,7 @@ async function loadData() {
     const saved = await KV.get("questions");
     if (saved && Array.isArray(saved.questions)) {
       QUESTIONS = saved.questions;
-      META = { fileName: saved.fileName, loadedAt: saved.loadedAt, problems: saved.problems || [] };
+      META = { fileName: saved.fileName, loadedAt: saved.loadedAt, problems: saved.problems || [], fromVault: saved.fileName === VAULT_NAME };
     }
   } catch (e) {
     console.error(e);
@@ -176,18 +176,26 @@ async function loadData() {
   BY_ID = new Map(QUESTIONS.map((q) => [q.id, q]));
 }
 
-async function importPdf(file, onProgress) {
-  if (!window.pdfjsLib) throw new Error("PDF 엔진을 불러오지 못했습니다. 인터넷 연결을 확인하세요.");
-  const bytes = new Uint8Array(await file.arrayBuffer());
+// PDF 바이트 → 문제 데이터. persist가 false면 이 탭의 메모리에만 두고 기기에 저장하지 않는다 (공용 PC용).
+async function importPdfBytes(bytes, fileName, onProgress, persist = true) {
+  if (!window.pdfjsLib) throw new Error("PDF 엔진을 불러오지 못했습니다.");
   const pdf = await pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
   const { questions, problems } = await CPPGParser.parse(pdf, onProgress);
   pdf.destroy();
   if (problems.length > 30) throw new Error(`파싱에 실패한 문항이 너무 많습니다 (${problems.length}건).`);
-  const record = { questions, problems, fileName: file.name, loadedAt: Date.now() };
-  await KV.set("pdf", bytes.buffer);
-  await KV.set("questions", record);
+  const record = { questions, problems, fileName, loadedAt: Date.now() };
   pdfDocPromise = null;
-  await loadData();
+  if (persist) {
+    await KV.set("pdf", bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+    await KV.set("questions", record);
+    MEMORY_PDF = null;
+    await loadData();
+  } else {
+    MEMORY_PDF = bytes;
+    QUESTIONS = questions;
+    BY_ID = new Map(QUESTIONS.map((q) => [q.id, q]));
+    META = { fileName, loadedAt: record.loadedAt, problems, temporary: true, fromVault: fileName === VAULT_NAME };
+  }
   return record;
 }
 
@@ -195,33 +203,68 @@ async function clearData() {
   await KV.del("questions");
   await KV.del("pdf");
   pdfDocPromise = null;
+  MEMORY_PDF = null;
   QUESTIONS = [];
   BY_ID = new Map();
   META = null;
 }
 
+let MEMORY_PDF = null;
 let pdfDocPromise = null;
+
+async function getPdfBytes() {
+  if (MEMORY_PDF) return MEMORY_PDF;
+  const buf = await KV.get("pdf");
+  if (!buf) throw new Error("저장된 PDF가 없습니다.");
+  return new Uint8Array(buf);
+}
+
 function getPdfDoc() {
-  pdfDocPromise ||= KV.get("pdf").then((buf) => {
-    if (!buf) throw new Error("저장된 PDF가 없습니다.");
-    return pdfjsLib.getDocument({ data: new Uint8Array(buf), isEvalSupported: false }).promise;
-  });
+  pdfDocPromise ||= getPdfBytes().then((bytes) => pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise);
   pdfDocPromise.catch(() => (pdfDocPromise = null));
   return pdfDocPromise;
 }
 
+const VAULT_NAME = "암호화 문제집 (비밀번호로 엶)";
+
+// 사이트에 암호화된 문제집(library/cppg.enc)이 올라가 있는지
+let vaultAvailable = null;
+async function checkVault() {
+  if (vaultAvailable !== null) return vaultAvailable;
+  try {
+    const res = await fetch(Vault.URL, { method: "HEAD", cache: "no-store" });
+    vaultAvailable = res.ok;
+  } catch {
+    vaultAvailable = false;
+  }
+  return vaultAvailable;
+}
+
 function dropzoneHTML() {
+  const unlock = vaultAvailable
+    ? `<form class="card unlock-card" id="unlock-form" autocomplete="off">
+         <h3>🔐 비밀번호로 열기</h3>
+         <p class="muted small">이 사이트에 암호화해 둔 문제집을 비밀번호로 엽니다. 다른 PC나 폰에서도 같은 자료를 쓸 수 있습니다.</p>
+         <div class="btn-row" style="flex-wrap:nowrap;margin-top:0.9rem">
+           <input type="password" id="unlock-pw" class="input" placeholder="비밀번호" autocomplete="current-password" style="flex:1;min-width:0" required>
+           <button class="btn sky" id="unlock-btn">열기</button>
+         </div>
+         <label class="check-row"><input type="checkbox" id="unlock-persist" checked> 이 기기에 저장 (공용 PC라면 해제하세요)</label>
+       </form>
+       <p class="muted small" style="text-align:center;margin:1rem 0">또는</p>`
+    : "";
   return `
+    ${unlock}
     <div class="dropzone" id="dropzone" tabindex="0" role="button">
       <div class="big">📄</div>
       <h3>문제집 PDF 불러오기</h3>
       <p class="muted small">컴공로드맵 CPPG 실전 300제 PDF를 끌어다 놓거나 클릭해서 선택하세요.<br>
       파일은 서버로 올라가지 않고 이 브라우저 안에서만 분석·저장됩니다.</p>
       <input type="file" id="pdf-input" accept="application/pdf" hidden>
-      <div id="import-progress" hidden>
-        <div class="progress-bar"><div style="width:0%"></div></div>
-        <p class="muted small" style="margin-top:0.5rem" id="import-label">분석 중…</p>
-      </div>
+    </div>
+    <div id="import-progress" hidden>
+      <div class="progress-bar"><div style="width:0%"></div></div>
+      <p class="muted small" style="margin-top:0.5rem;text-align:center" id="import-label">분석 중…</p>
     </div>`;
 }
 
@@ -229,21 +272,23 @@ function bindDropzone(onDone) {
   const zone = document.getElementById("dropzone");
   if (!zone) return;
   const input = document.getElementById("pdf-input");
+  const prog = document.getElementById("import-progress");
+  const bar = prog.querySelector(".progress-bar > div");
+  const lbl = document.getElementById("import-label");
   let busy = false;
-  const run = async (file) => {
-    if (!file || busy) return;
-    if (!/\.pdf$/i.test(file.name)) return alertBox("PDF 파일이 아닙니다", "문제집 PDF 파일을 선택하세요.");
+
+  const run = async (getBytes, fileName, persist) => {
+    if (busy) return;
     busy = true;
-    const prog = document.getElementById("import-progress");
-    const bar = prog.querySelector(".progress-bar > div");
-    const lbl = document.getElementById("import-label");
     prog.hidden = false;
+    bar.style.width = "0%";
     try {
-      const rec = await importPdf(file, (r) => {
+      const bytes = await getBytes((msg) => (lbl.textContent = msg));
+      const rec = await importPdfBytes(bytes, fileName, (r) => {
         bar.style.width = `${Math.round(r * 100)}%`;
         lbl.textContent = `페이지 분석 중… ${Math.round(r * 100)}%`;
-      });
-      toast(`${rec.questions.length}문항을 불러왔습니다.`);
+      }, persist);
+      toast(`${rec.questions.length}문항을 불러왔습니다.${persist ? "" : " (이 탭에서만 사용)"}`);
       renderSidebar();
       onDone?.();
     } catch (e) {
@@ -254,9 +299,16 @@ function bindDropzone(onDone) {
       busy = false;
     }
   };
+
+  const runFile = (file) => {
+    if (!file) return;
+    if (!/\.pdf$/i.test(file.name)) return alertBox("PDF 파일이 아닙니다", "문제집 PDF 파일을 선택하세요.");
+    run(async () => new Uint8Array(await file.arrayBuffer()), file.name, true);
+  };
+
   zone.onclick = (e) => e.target !== input && input.click();
   zone.onkeydown = (e) => (e.key === "Enter" || e.key === " ") && input.click();
-  input.onchange = () => run(input.files[0]);
+  input.onchange = () => runFile(input.files[0]);
   zone.ondragover = (e) => {
     e.preventDefault();
     zone.classList.add("over");
@@ -265,8 +317,33 @@ function bindDropzone(onDone) {
   zone.ondrop = (e) => {
     e.preventDefault();
     zone.classList.remove("over");
-    run(e.dataTransfer.files[0]);
+    runFile(e.dataTransfer.files[0]);
   };
+
+  const form = document.getElementById("unlock-form");
+  if (form) {
+    form.onsubmit = (e) => {
+      e.preventDefault();
+      const pwEl = document.getElementById("unlock-pw");
+      const password = pwEl.value;
+      if (!password) return pwEl.focus();
+      const persist = document.getElementById("unlock-persist").checked;
+      run(
+        async (status) => {
+          status("암호화된 문제집 받는 중…");
+          const res = await fetch(Vault.URL, { cache: "no-store" });
+          if (!res.ok) throw new Error("암호화 파일을 받지 못했습니다.");
+          const enc = await res.arrayBuffer();
+          status("비밀번호 확인 중… (몇 초 걸릴 수 있습니다)");
+          const bytes = await Vault.decrypt(enc, password);
+          pwEl.value = "";
+          return bytes;
+        },
+        VAULT_NAME,
+        persist
+      );
+    };
+  }
 }
 
 // ─── 폴더 (다시 볼 문제) ────────────────────────────────
@@ -500,7 +577,7 @@ function render() {
 
 function renderSidebar() {
   document.getElementById("data-status").innerHTML = QUESTIONS.length
-    ? `📄 ${QUESTIONS.length}문항 불러옴`
+    ? `📄 ${QUESTIONS.length}문항 불러옴${META?.temporary ? " (임시)" : ""}`
     : `<a href="#/dashboard">📄 PDF를 불러오세요</a>`;
 }
 
@@ -556,7 +633,7 @@ function viewDashboard() {
       ${
         noData
           ? `<div class="banner"><div class="icon">📄</div><div class="text"><strong>문제집 PDF가 아직 없습니다.</strong>
-               <span class="small muted">문제집은 저작권이 있는 자료라 사이트에 들어 있지 않습니다. 구매한 PDF를 한 번만 불러오면 이 기기에 저장됩니다.</span></div></div>
+               <span class="small muted">${vaultAvailable ? "비밀번호로 암호화된 문제집을 열거나, PDF를 직접 불러오세요." : "문제집은 저작권이 있는 자료라 사이트에 들어 있지 않습니다. 구매한 PDF를 한 번만 불러오면 이 기기에 저장됩니다."}</span></div></div>
              <div style="margin-top:1.25rem">${dropzoneHTML()}</div>`
           : sess && !sess.finished
             ? `<div class="banner info"><div class="icon">⏸️</div><div class="text"><strong>풀던 문제가 있습니다</strong>
@@ -1364,15 +1441,33 @@ function viewSettings() {
       <div class="card">
         ${
           QUESTIONS.length
-            ? `<p><b>${h(META?.fileName || "문제집")}</b> · ${QUESTIONS.length}문항 · ${META?.loadedAt ? fmtDate(META.loadedAt) + " 불러옴" : ""}</p>
+            ? `<p><b>${h(META?.fileName || "문제집")}</b> · ${QUESTIONS.length}문항 · ${META?.loadedAt ? fmtDate(META.loadedAt) + " 불러옴" : ""}${META?.temporary ? ' · <span style="color:var(--gold)">이 탭에서만 사용 중 (기기에 저장 안 됨)</span>' : ""}</p>
                ${META?.problems?.length ? `<p class="small" style="color:var(--gold);margin-top:0.4rem">확인이 필요한 문항 ${META.problems.length}개: ${h(META.problems.join(", "))}</p>` : ""}
-               <p class="muted small" style="margin-top:0.4rem">문제 데이터와 PDF는 이 브라우저(IndexedDB)에만 저장되어 있습니다.</p>
+               <p class="muted small" style="margin-top:0.4rem">${META?.temporary ? "탭을 닫으면 문제 데이터가 사라집니다." : "문제 데이터와 PDF는 이 브라우저(IndexedDB)에만 저장되어 있습니다."}</p>
                <div class="btn-row" style="margin-top:1rem">
                  <button class="btn" data-act="reload">다른 PDF로 다시 불러오기</button>
                  <button class="btn danger" data-act="clear-data">문제 데이터 삭제</button>
                </div>
                <div id="reload-zone" style="margin-top:1rem" hidden>${dropzoneHTML()}</div>`
             : dropzoneHTML()
+        }
+      </div>
+
+      <h2>📱 다른 기기에서 쓰기</h2>
+      <div class="card">
+        <p class="small">${vaultAvailable ? "✅ 암호화된 문제집이 사이트에 올라가 있습니다. 다른 기기에서는 대시보드의 <b>비밀번호로 열기</b>를 쓰세요." : "아직 사이트에 암호화된 문제집이 없습니다."}</p>
+        <p class="muted small" style="margin-top:0.4rem">불러온 PDF를 비밀번호로 암호화한 파일(<code>cppg.enc</code>)을 만듭니다. 암호화는 이 브라우저 안에서만 이뤄집니다.
+        이 파일을 저장소의 <code>library/</code> 폴더에 올리면 어느 기기에서든 비밀번호만으로 열 수 있습니다.
+        서버가 없어 입력 횟수 제한을 걸 수 없으므로 <b>15자 이상의 추측하기 어려운 문장</b>을 쓰세요.</p>
+        ${
+          QUESTIONS.length && !META?.fromVault
+            ? `<form id="vault-form" autocomplete="off" style="margin-top:1rem;display:grid;gap:0.6rem;max-width:26rem">
+                 <input type="password" id="vault-pw" class="input" placeholder="새 비밀번호 (15자 이상)" autocomplete="new-password">
+                 <input type="password" id="vault-pw2" class="input" placeholder="비밀번호 확인" autocomplete="new-password">
+                 <button class="btn primary" id="vault-btn">🔐 암호화 파일 만들기</button>
+                 <p class="muted small" id="vault-status"></p>
+               </form>`
+            : `<p class="muted small" style="margin-top:0.8rem">${QUESTIONS.length ? "비밀번호로 연 자료입니다. 비밀번호를 바꾸려면 원본 PDF를 불러온 기기에서 새로 만드세요." : "먼저 문제집 PDF를 불러오세요."}</p>`
         }
       </div>
 
@@ -1388,6 +1483,37 @@ function viewSettings() {
     </section>`;
 
   bindDropzone(() => render());
+
+  const vaultForm = document.getElementById("vault-form");
+  if (vaultForm) {
+    vaultForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const pw = document.getElementById("vault-pw").value;
+      const pw2 = document.getElementById("vault-pw2").value;
+      const status = document.getElementById("vault-status");
+      if (pw.length < 15) return (status.textContent = "15자 이상으로 정해 주세요.");
+      if (new Set(pw).size < 6) return (status.textContent = "같은 글자가 너무 많습니다. 더 다양하게 정해 주세요.");
+      if (pw !== pw2) return (status.textContent = "두 비밀번호가 다릅니다.");
+      const btn = document.getElementById("vault-btn");
+      btn.disabled = true;
+      status.textContent = "암호화 중… (몇 초 걸립니다)";
+      try {
+        const enc = await Vault.encrypt(await getPdfBytes(), pw);
+        // 암호화가 제대로 됐는지 바로 풀어서 확인한다
+        status.textContent = "검증 중…";
+        await Vault.decrypt(enc.buffer, pw);
+        const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(new Blob([enc], { type: "application/octet-stream" })), download: "cppg.enc" });
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        vaultForm.reset();
+        status.textContent = "✅ cppg.enc 파일을 내려받았습니다. 저장소의 library/ 폴더에 올리면 됩니다. 비밀번호는 따로 안전하게 보관하세요.";
+      } catch (err) {
+        status.textContent = `실패: ${err.message || err}`;
+      } finally {
+        btn.disabled = false;
+      }
+    };
+  }
 
   document.getElementById("import-json").onchange = async (e) => {
     const file = e.target.files[0];
@@ -1530,7 +1656,7 @@ lightboxEl.querySelector(".lightbox-tools").onclick = (e) => {
 // ─── 시작 ───────────────────────────────────────────────
 
 (async function init() {
-  await loadData();
+  await Promise.all([loadData(), checkVault()]);
   renderSidebar();
   render();
 })();

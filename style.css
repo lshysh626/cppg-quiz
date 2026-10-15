@@ -1,0 +1,213 @@
+:root {
+  --bg: #f6f7f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --text: #1c2330;
+  --muted: #657084;
+  --border: #dde2ea;
+  --accent: #2f5bea;
+  --accent-soft: #e6ecff;
+  --good: #1a8a4a;
+  --good-soft: #e3f5ea;
+  --bad: #c9352b;
+  --bad-soft: #fde8e6;
+  --warn: #b7791f;
+  --radius: 10px;
+}
+
+:root[data-theme="dark"] {
+  --bg: #12151b;
+  --surface: #1b1f27;
+  --surface-2: #252a34;
+  --text: #e6e9ef;
+  --muted: #98a1b3;
+  --border: #323846;
+  --accent: #7c9bff;
+  --accent-soft: #263257;
+  --good: #4cc77f;
+  --good-soft: #17352a;
+  --bad: #ff7a70;
+  --bad-soft: #3d1f1d;
+  --warn: #e0a84a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  word-break: keep-all;
+}
+
+a { color: var(--accent); text-decoration: none; }
+
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 16px;
+  padding: 10px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 700; color: var(--text); }
+.topbar nav { display: flex; gap: 14px; flex: 1; overflow-x: auto; }
+.topbar nav a { color: var(--muted); white-space: nowrap; }
+.topbar nav a.active { color: var(--accent); font-weight: 600; }
+
+main { max-width: 860px; margin: 0 auto; padding: 24px 16px 80px; }
+
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.15rem; margin: 28px 0 12px; }
+.muted { color: var(--muted); }
+.small { font-size: .875rem; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+
+.mode-card { display: flex; flex-direction: column; gap: 8px; }
+.mode-card h3 { margin: 0; font-size: 1.05rem; }
+.mode-card p { margin: 0; color: var(--muted); font-size: .9rem; flex: 1; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit; font-size: .95rem;
+  cursor: pointer;
+}
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.icon-btn {
+  border: none; background: none; color: var(--muted);
+  font-size: 1.15rem; cursor: pointer; padding: 4px 8px; border-radius: 6px;
+}
+.icon-btn:hover { background: var(--surface-2); }
+.icon-btn.small { font-size: .85rem; }
+.icon-btn.hint { color: var(--warn); font-weight: 600; }
+
+label.field { display: flex; flex-direction: column; gap: 4px; font-size: .9rem; color: var(--muted); }
+select, input[type="number"] {
+  font: inherit; color: var(--text);
+  padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+}
+.check { display: flex; align-items: center; gap: 6px; font-size: .9rem; }
+.form-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 14px; }
+
+/* 문제 화면 */
+.quiz-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 12px; flex-wrap: wrap;
+}
+.progress { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; margin-bottom: 18px; }
+.progress > div { height: 100%; background: var(--accent); transition: width .2s; }
+.timer { font-variant-numeric: tabular-nums; font-weight: 600; }
+.timer.low { color: var(--bad); }
+
+.tag {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted); font-size: .8rem;
+}
+.q-meta { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+.q-stem { font-size: 1.05rem; font-weight: 600; margin: 0 0 16px; white-space: pre-wrap; }
+.q-num { color: var(--accent); margin-right: 6px; }
+
+.choices { display: flex; flex-direction: column; gap: 8px; }
+.choice {
+  display: flex; gap: 10px; align-items: flex-start; text-align: left;
+  width: 100%; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--text);
+  font: inherit; font-size: .95rem; line-height: 1.6;
+  cursor: pointer;
+}
+.choice:hover:not(:disabled) { border-color: var(--accent); }
+.choice .mark { flex: none; font-weight: 700; color: var(--muted); }
+.choice.selected { border-color: var(--accent); background: var(--accent-soft); }
+.choice.correct { border-color: var(--good); background: var(--good-soft); }
+.choice.correct .mark { color: var(--good); }
+.choice.wrong { border-color: var(--bad); background: var(--bad-soft); }
+.choice.wrong .mark { color: var(--bad); }
+.choice:disabled { cursor: default; }
+
+.explain {
+  margin-top: 16px; padding: 14px 16px;
+  border-left: 4px solid var(--accent);
+  background: var(--surface-2); border-radius: 0 8px 8px 0;
+}
+.explain .verdict { font-weight: 700; margin-bottom: 4px; }
+.explain .verdict.good { color: var(--good); }
+.explain .verdict.bad { color: var(--bad); }
+.explain p { margin: 0; }
+
+.quiz-foot { display: flex; justify-content: space-between; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+
+/* 답안 번호판 */
+.omr { display: grid; grid-template-columns: repeat(auto-fill, minmax(40px, 1fr)); gap: 4px; margin-top: 18px; }
+.omr button {
+  padding: 6px 0; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--surface); color: var(--muted); font: inherit; font-size: .8rem; cursor: pointer;
+}
+.omr button.answered { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.omr button.current { outline: 2px solid var(--accent); outline-offset: 1px; }
+.omr button.correct { background: var(--good-soft); color: var(--good); border-color: transparent; }
+.omr button.wrong { background: var(--bad-soft); color: var(--bad); border-color: transparent; }
+
+/* 결과 */
+.score-big { font-size: 2.6rem; font-weight: 800; line-height: 1.1; }
+.pass { color: var(--good); font-weight: 700; }
+.fail { color: var(--bad); font-weight: 700; }
+table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+th, td { padding: 9px 10px; border-bottom: 1px solid var(--border); text-align: left; }
+th { color: var(--muted); font-weight: 600; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+.bar { height: 8px; background: var(--surface-2); border-radius: 4px; overflow: hidden; min-width: 80px; }
+.bar > div { height: 100%; background: var(--accent); }
+.bar.low > div { background: var(--bad); }
+
+.list-item {
+  display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  padding: 12px 0; border-bottom: 1px solid var(--border);
+}
+.list-item .text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.empty { text-align: center; padding: 40px 20px; color: var(--muted); }
+
+dialog#page-viewer {
+  width: min(900px, 96vw); max-height: 92vh; padding: 0;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); color: var(--text);
+}
+dialog::backdrop { background: rgba(0, 0, 0, .55); }
+.viewer-head {
+  position: sticky; top: 0; display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 14px; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+#page-viewer-body img { display: block; width: 100%; height: auto; }
+
+.kbd-hint { font-size: .8rem; color: var(--muted); margin-top: 14px; }
+kbd {
+  padding: 1px 5px; border: 1px solid var(--border); border-bottom-width: 2px;
+  border-radius: 4px; font: inherit; font-size: .75rem;
+}
+
+@media (max-width: 600px) {
+  .topbar { padding: 10px 14px; gap: 10px; }
+  .brand { display: none; }
+  main { padding: 16px 14px 80px; }
+  .card { padding: 16px; }
+}

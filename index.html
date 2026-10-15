@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CPPG 기출 풀이</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="#/" class="brand">CPPG 기출 풀이</a>
+    <nav>
+      <a href="#/">홈</a>
+      <a href="#/wrong">오답노트</a>
+      <a href="#/bookmarks">북마크</a>
+      <a href="#/history">기록</a>
+    </nav>
+    <button id="theme-toggle" class="icon-btn" title="다크 모드 전환" aria-label="다크 모드 전환">◐</button>
+  </header>
+
+  <main id="app"></main>
+
+  <dialog id="page-viewer">
+    <form method="dialog" class="viewer-head">
+      <span id="page-viewer-title">원본 페이지</span>
+      <button class="icon-btn" aria-label="닫기">✕</button>
+    </form>
+    <div id="page-viewer-body"></div>
+  </dialog>
+
+  <!-- 문제 데이터: scripts/parse_pdf.py 실행 시 생성 (git 미포함) -->
+  <script src="data/questions.js" onerror="window.CPPG_QUESTIONS = null"></script>
+  <script src="app.js"></script>
+</body>
+</html>

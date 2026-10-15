@@ -40,6 +40,8 @@ library/         암호화된 문제집 (cppg.enc)
 js/app.js        화면·풀이·채점·폴더·통계
 ```
 
+개발 과정은 [docs/DEVLOG.md](docs/DEVLOG.md)에 정리했습니다.
+
 빌드 과정 없이 정적 파일 그대로 GitHub Pages에 배포됩니다. 로컬에서 확인하려면:
 
 ```bash

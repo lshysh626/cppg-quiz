@@ -485,14 +485,16 @@ function render() {
   closeLightbox();
 
   const [view = "dashboard", sub = ""] = location.hash.replace(/^#\/?/, "").split("/");
-  const needsData = ["select", "quiz", "result", "bookmarks"].includes(view);
-  const target = needsData && !QUESTIONS.length ? "dashboard" : view;
+  const views = { dashboard: viewDashboard, select: viewSelect, bookmarks: viewBookmarks, stats: viewStats, settings: viewSettings, quiz: viewQuiz, result: viewResult };
+  const target = views[view] ? view : "dashboard";
+  const needsData = ["select", "quiz", "result", "bookmarks"].includes(target);
+  const blocked = needsData && !QUESTIONS.length;
 
-  appEl.classList.toggle("quiz-mode", target === "quiz");
+  appEl.classList.toggle("quiz-mode", target === "quiz" && !blocked);
   document.querySelectorAll(".nav-links li").forEach((li) => li.classList.toggle("active", li.dataset.view === target));
 
-  const views = { dashboard: viewDashboard, select: viewSelect, bookmarks: viewBookmarks, stats: viewStats, settings: viewSettings, quiz: viewQuiz, result: viewResult };
-  (views[target] || viewDashboard)(decodeURIComponent(sub));
+  if (blocked) viewNeedsPdf(target);
+  else views[target](decodeURIComponent(sub));
   if (target !== "quiz") contentEl.scrollTop = 0;
 }
 
@@ -513,6 +515,19 @@ document.addEventListener("keydown", (e) => {
   if (!dialogEl.hidden) return;
   keyHandler?.(e);
 });
+
+// 문제 데이터가 필요한 화면인데 아직 PDF를 불러오지 않은 경우
+function viewNeedsPdf(view) {
+  const titles = { select: "기출 풀기", bookmarks: "⭐ 다시 볼 문제", quiz: "기출 풀기", result: "채점 결과" };
+  contentEl.innerHTML = `
+    <section class="view">
+      <h1>${titles[view] || "기출 풀기"}</h1>
+      <div class="banner"><div class="icon">📄</div><div class="text"><strong>먼저 문제집 PDF를 불러와 주세요.</strong>
+        <span class="small muted">이 기기에는 아직 문제 데이터가 없습니다. 기기마다 한 번씩 불러오면 그다음부터는 바로 쓸 수 있습니다.</span></div></div>
+      <div style="margin-top:1.25rem">${dropzoneHTML()}</div>
+    </section>`;
+  bindDropzone(() => render());
+}
 
 // ─── 화면: 대시보드 ─────────────────────────────────────
 

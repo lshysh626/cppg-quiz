@@ -3,7 +3,7 @@
 개인정보관리사(CPPG) 문제집 PDF를 불러와 브라우저에서 기출을 풀어 보는 사이트입니다.
 정보보안기사 실기용 [gichul-study](https://github.com/lshysh626/gichul-study)(IS MASTER)의 화면 구성과 테마를 따랐습니다.
 
-**사이트:** https://lshysh626.github.io/cppg-quiz/
+**사이트:** https://cppg.songcoco.kr
 
 > **문제 데이터는 이 저장소와 사이트에 들어 있지 않습니다.**
 > 문제집은 저작권이 있는 유료 자료입니다. 직접 구매한 PDF를 사이트에서 불러오면

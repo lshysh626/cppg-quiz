@@ -821,8 +821,8 @@ function viewQuiz() {
         ${!review && sess.mode === "bulk" ? `<button class="btn small primary" data-act="finish">답안 제출</button>` : ""}
         <button class="ghost-btn" data-act="exit" title="나가기" style="font-size:1.3rem">✕</button>
       </div>
+      <div class="quiz-progress"><div style="width:${((sess.idx + 1) / sess.ids.length) * 100}%"></div></div>
     </div>
-    <div class="quiz-progress"><div style="width:${((sess.idx + 1) / sess.ids.length) * 100}%"></div></div>
 
     <div class="quiz-body">
       <div class="quiz-card">

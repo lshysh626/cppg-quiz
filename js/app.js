@@ -6,7 +6,7 @@
 //  풀이 기록·폴더는 localStorage에 둔다.
 // ═══════════════════════════════════════════════════════════
 
-const PDFJS_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js";
+const PDFJS_WORKER = "vendor/pdfjs/pdf.worker.min.js";
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER;
 
 const MARKS = ["①", "②", "③", "④", "⑤"];
@@ -179,7 +179,7 @@ async function loadData() {
 async function importPdf(file, onProgress) {
   if (!window.pdfjsLib) throw new Error("PDF 엔진을 불러오지 못했습니다. 인터넷 연결을 확인하세요.");
   const bytes = new Uint8Array(await file.arrayBuffer());
-  const pdf = await pdfjsLib.getDocument({ data: bytes.slice() }).promise;
+  const pdf = await pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
   const { questions, problems } = await CPPGParser.parse(pdf, onProgress);
   pdf.destroy();
   if (problems.length > 30) throw new Error(`파싱에 실패한 문항이 너무 많습니다 (${problems.length}건).`);
@@ -204,7 +204,7 @@ let pdfDocPromise = null;
 function getPdfDoc() {
   pdfDocPromise ||= KV.get("pdf").then((buf) => {
     if (!buf) throw new Error("저장된 PDF가 없습니다.");
-    return pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+    return pdfjsLib.getDocument({ data: new Uint8Array(buf), isEvalSupported: false }).promise;
   });
   pdfDocPromise.catch(() => (pdfDocPromise = null));
   return pdfDocPromise;

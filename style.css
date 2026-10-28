@@ -245,6 +245,13 @@ tr.clickable:hover td { background: rgba(255, 255, 255, 0.02); }
   padding: 0.9rem 1.1rem; margin: -0.2rem 0 1.25rem; font-size: 0.95rem; color: var(--sub);
 }
 .bogi-box div + div { margin-top: 0.35rem; }
+.q-stem + .q-stem { margin-top: -0.6rem; }
+.q-tag.hot { color: var(--gold); border-color: rgba(251, 191, 36, 0.45); background: rgba(251, 191, 36, 0.08); }
+.q-fig {
+  display: block; max-width: 100%; margin: -0.2rem auto 1.25rem; padding: 0.5rem;
+  background: #fff; border: 1px solid var(--border); border-radius: 10px; cursor: zoom-in;
+}
+.q-fig canvas { display: block; max-width: 100%; height: auto; }
 
 .choices { display: flex; flex-direction: column; gap: 0.6rem; }
 .choice {

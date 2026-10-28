@@ -167,6 +167,7 @@ async function loadData() {
   try {
     const saved = await KV.get("questions");
     if (saved && Array.isArray(saved.questions)) {
+      if (saved.version !== CPPGParser.VERSION && (await reparseSaved(saved))) return;
       QUESTIONS = saved.questions;
       META = { fileName: saved.fileName, loadedAt: saved.loadedAt, problems: saved.problems || [], fromVault: saved.fileName === VAULT_NAME };
     }
@@ -176,6 +177,20 @@ async function loadData() {
   BY_ID = new Map(QUESTIONS.map((q) => [q.id, q]));
 }
 
+// 파서가 바뀌어 저장된 문제 데이터 형식이 예전 것이면, 저장해 둔 PDF로 다시 분석한다.
+async function reparseSaved(saved) {
+  try {
+    const buf = await KV.get("pdf");
+    if (!buf || !window.pdfjsLib) return false;
+    contentEl.innerHTML = `<p class="muted" style="padding:3rem 1rem;text-align:center">문제집을 새 형식으로 다시 분석하는 중입니다…</p>`;
+    await importPdfBytes(new Uint8Array(buf), saved.fileName, () => {}, true);
+    return true;
+  } catch (e) {
+    console.error(e);
+    return false;
+  }
+}
+
 // PDF 바이트 → 문제 데이터. persist가 false면 이 탭의 메모리에만 두고 기기에 저장하지 않는다 (공용 PC용).
 async function importPdfBytes(bytes, fileName, onProgress, persist = true) {
   if (!window.pdfjsLib) throw new Error("PDF 엔진을 불러오지 못했습니다.");
@@ -183,7 +198,7 @@ async function importPdfBytes(bytes, fileName, onProgress, persist = true) {
   const { questions, problems } = await CPPGParser.parse(pdf, onProgress);
   pdf.destroy();
   if (problems.length > 30) throw new Error(`파싱에 실패한 문항이 너무 많습니다 (${problems.length}건).`);
-  const record = { questions, problems, fileName, loadedAt: Date.now() };
+  const record = { version: CPPGParser.VERSION, questions, problems, fileName, loadedAt: Date.now() };
   pdfDocPromise = null;
   if (persist) {
     await KV.set("pdf", bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
@@ -830,6 +845,46 @@ function renderStem(stem) {
   return `${main ? `<p class="q-stem">${h(main)}</p>` : ""}<div class="bogi-box">${items.map((t) => `<div>${h(t)}</div>`).join("")}</div>`;
 }
 
+// 발문·지문 상자·그림을 PDF에 실린 순서대로 그린다. 예전 형식 데이터(body 없음)는 renderStem으로 대신한다.
+const FIG_SCALE = 1.5; // 그림을 PDF 원본 크기의 몇 배로 보여 줄지
+function renderBody(q) {
+  if (!q.body) return renderStem(q.stem);
+  return q.body
+    .map((p) => {
+      if (p.kind === "text") return `<p class="q-stem">${h(p.text)}</p>`;
+      if (p.kind === "box") return `<div class="bogi-box">${p.items.map((t) => `<div>${h(t)}</div>`).join("")}</div>`;
+      const [x0, y0, x1, y1] = p.rect;
+      return `<button class="q-fig" data-act="source" data-page="${p.page}" title="원본 페이지에서 크게 보기">
+        <canvas data-fig="${[p.page, ...p.rect].join(",")}" style="width:${Math.round((x1 - x0) * FIG_SCALE)}px;aspect-ratio:${x1 - x0} / ${y1 - y0}"></canvas></button>`;
+    })
+    .join("");
+}
+
+// renderBody가 만든 그림 자리(canvas)에 PDF의 해당 영역을 잘라 그린다.
+async function drawFigures(root) {
+  const canvases = [...root.querySelectorAll("canvas[data-fig]")];
+  if (!canvases.length) return;
+  let pdf;
+  try {
+    pdf = await getPdfDoc();
+  } catch (e) {
+    return console.error(e);
+  }
+  for (const canvas of canvases) {
+    const [n, x0, y0, x1, y1] = canvas.dataset.fig.split(",").map(Number);
+    try {
+      const page = await pdf.getPage(n);
+      const scale = FIG_SCALE * (window.devicePixelRatio || 1);
+      const viewport = page.getViewport({ scale, offsetX: -x0 * scale, offsetY: -y0 * scale });
+      canvas.width = Math.ceil((x1 - x0) * scale);
+      canvas.height = Math.ceil((y1 - y0) * scale);
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+    } catch (e) {
+      console.error(e);
+    }
+  }
+}
+
 function viewQuiz() {
   const sess = store.session;
   if (!sess) return go("select");
@@ -852,7 +907,7 @@ function viewQuiz() {
   const isLast = sess.idx === sess.ids.length - 1;
   const answeredCount = Object.keys(sess.answers).length;
   const saved = foldersOf(id).length > 0;
-  const hasFigure = /표|그림|도표|사례|다음과 같/.test(q.stem);
+  const hasFigure = q.body ? q.body.some((p) => p.kind === "fig") : /표|그림|도표|사례|다음과 같/.test(q.stem);
 
   const choiceClass = (n) => {
     if (revealed) {
@@ -906,13 +961,14 @@ function viewQuiz() {
         <div class="q-head">
           <span class="q-badge">Q${sess.idx + 1}</span>
           <span class="q-tag">${h(q.subject)}</span>
+          ${q.badge ? `<span class="q-tag hot">기출반영</span>` : ""}
           <span class="muted small">${sess.idx + 1} / ${sess.ids.length}</span>
           <span class="spacer"></span>
           <button class="src-btn ${hasFigure ? "hint" : ""}" data-act="source" title="PDF 원본 페이지 보기">🔍 원본 보기</button>
           <button class="star-btn ${saved ? "on" : ""}" data-act="star" title="다시 볼 문제 (B)">⭐ 다시 볼 문제</button>
         </div>
         <div class="q-source">📄 출처: 컴공로드맵 CPPG 실전 300제 ${q.round}회차 ${q.no}번${store.stats[id] ? ` · 지금까지 ${store.stats[id].correct}/${store.stats[id].tries} 정답` : ""}</div>
-        ${renderStem(q.stem)}
+        ${renderBody(q)}
         <div class="choices">
           ${q.choices
             .map((c, i) => `<button class="choice ${choiceClass(i + 1)}" data-choice="${i + 1}" ${locked ? "disabled" : ""}><span class="mark">${MARKS[i]}</span><span>${h(c)}</span></button>`)
@@ -941,6 +997,8 @@ function viewQuiz() {
       </div>
       <div class="omr">${sess.ids.map((qid, i) => `<button class="${omrClass(qid, i)}" data-goto="${i}">${i + 1}</button>`).join("")}</div>
     </aside>`;
+
+  drawFigures(contentEl);
 
   // 타이머: 실전 모의고사·회차 풀이는 남은 시간, 나머지는 경과 시간
   if (!review) {
@@ -1039,7 +1097,7 @@ function viewQuiz() {
     else if (d.act === "to-result") go("result");
     else if (d.act === "exit") exit();
     else if (d.act === "star") star();
-    else if (d.act === "source") openLightbox(q);
+    else if (d.act === "source") openLightbox(q, Number(d.page) || undefined);
     else if (d.act === "omr") {
       omrOpen = !omrOpen;
       render();
@@ -1310,7 +1368,7 @@ function showQuestion(q) {
   openDialog({
     title: `${label(q)} · ${q.subject}`,
     body: `
-      ${renderStem(q.stem)}
+      ${renderBody(q)}
       <div class="choices">
         ${q.choices.map((c, i) => `<div class="choice ${i + 1 === q.answer ? "correct" : ""}"><span class="mark">${MARKS[i]}</span><span>${h(c)}</span></div>`).join("")}
       </div>
@@ -1320,7 +1378,10 @@ function showQuestion(q) {
       { label: "⭐ 폴더 관리", value: () => "star" },
       { label: "닫기", cls: "primary", value: () => null },
     ],
-    onOpen: (dlg) => dlg.querySelector(".modal-card").classList.add("wide"),
+    onOpen: (dlg) => {
+      dlg.querySelector(".modal-card").classList.add("wide");
+      drawFigures(dlg);
+    },
   }).then((act) => {
     dialogEl.querySelector(".modal-card").classList.remove("wide");
     if (act === "source") openLightbox(q);
@@ -1562,9 +1623,9 @@ function viewSettings() {
 const lightboxEl = document.getElementById("lightbox");
 const lb = { page: 1, scale: 1.4, q: null, renderTask: null };
 
-async function openLightbox(q) {
+async function openLightbox(q, page = q.pages[0] || 1) {
   lb.q = q;
-  lb.page = q.pages[0] || 1;
+  lb.page = page;
   lightboxEl.hidden = false;
   await drawLightbox();
   document.getElementById("lightbox-stage").scrollTo(0, 0);
